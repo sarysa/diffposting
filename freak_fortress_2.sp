@@ -7804,7 +7804,7 @@ stock TF2_IsWearable(wearable)
 
 stock bool:IsLivingPlayer(clientIdx)
 {
-	if (clientIdx <= 0 || clientIdx >= MaxClients)
+	if (clientIdx <= 0 || clientIdx > MaxClients)
 		return false;
 		
 	return IsClientInGame(clientIdx) && IsPlayerAlive(clientIdx);
