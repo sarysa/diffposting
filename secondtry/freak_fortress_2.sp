@@ -3896,10 +3896,10 @@ public Action:ClientTimer(Handle:hTimer)
 						TF2_RemoveCondition(client, TFCond_DeadRingered);
 					}
 				}
-				else
-				{
-					TF2_AddCondition(client, TFCond_DeadRingered, 0.3);
-				}
+				//else
+				//{
+				//	TF2_AddCondition(client, TFCond_DeadRingered, 0.3);
+				//}
 			}
 
 			new index=(validwep ? GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex") : -1);
@@ -4980,10 +4980,14 @@ public Action:event_hurt(Handle:event, const String:name[], bool:dontBroadcast)
 	return Plugin_Continue;
 }
 
+new Float:OTD_ExpectedDamage = 0.0;
+new OTD_OldHealth = 0;
 public Action:OnTakeDamage(client, &attacker, &inflictor, &Float:damage, &damagetype, &weapon, Float:damageForce[3], Float:damagePosition[3], damagecustom)
 {
 	if(!Enabled || !IsValidEdict(attacker))
 		return Plugin_Continue;
+		
+	OTD_ExpectedDamage = 0.0;
 		
 	static bool:foundDmgCustom=false;
 	static bool:dmgCustomInOTD=false;
@@ -5046,19 +5050,25 @@ public Action:OnTakeDamage(client, &attacker, &inflictor, &Float:damage, &damage
 					if(GetEntProp(client, Prop_Send, "m_bFeignDeathReady") && !TF2_IsPlayerInCondition(client, TFCond_Cloaked))
 					{
 						if(damagetype & DMG_CRIT) damagetype&=~DMG_CRIT;
-						damage=620.0;
+						damage=fmin(damage, 65.0); // reason I went with 65.0 and not 62.0 is because damage is no longer variable
+						OTD_ExpectedDamage = damage;
+						OTD_OldHealth = GetEntProp(client, Prop_Data, "m_iHealth");
 						return Plugin_Changed;
 					}
-					if(TF2_IsPlayerInCondition(client, TFCond_Cloaked) && TF2_IsPlayerInCondition(client, TFCond_DeadRingered))
+					if(TF2_IsPlayerInCondition(client, TFCond_Cloaked) && GetClientCloakIndex(client)!=59)
 					{
 						if(damagetype & DMG_CRIT) damagetype&=~DMG_CRIT;
-						damage=850.0;
+						damage=fmin(damage, 85.0); // since old was 850
+						OTD_ExpectedDamage = damage;
+						OTD_OldHealth = GetEntProp(client, Prop_Data, "m_iHealth");
 						return Plugin_Changed;
 					}
 					if(GetEntProp(client, Prop_Send, "m_bFeignDeathReady") || TF2_IsPlayerInCondition(client, TFCond_DeadRingered))
 					{
 						if(damagetype & DMG_CRIT) damagetype&=~DMG_CRIT;
-						damage=620.0;
+						damage=fmin(damage, 65.0);
+						OTD_ExpectedDamage = damage;
+						OTD_OldHealth = GetEntProp(client, Prop_Data, "m_iHealth");
 						return Plugin_Changed;
 					}
 				}
@@ -7565,6 +7575,22 @@ public OnTakeDamagePost(client, attacker, inflictor, Float:damage, damagetype)
 		}
 		UpdateHealthBar();
 	}
+	else if (OTD_ExpectedDamage > 0.0)
+	{
+		if (IsLivingPlayer(client))
+		{
+			new hp = GetEntProp(client, Prop_Data, "m_iHealth");
+			new healthReduce = RoundFloat(OTD_ExpectedDamage) - (OTD_OldHealth - hp);
+			if (healthReduce >= hp)
+				ForcePlayerSuicide(client);
+			else if (healthReduce > 0)
+			{
+				SetEntProp(client, Prop_Data, "m_iHealth", hp - healthReduce);
+				SetEntProp(client, Prop_Send, "m_iHealth", hp - healthReduce);
+			}
+		}
+		OTD_ExpectedDamage = 0.0;
+	}
 }
 
 public OnEntityCreated(entity, const String:classname[])
@@ -7774,6 +7800,19 @@ stock TF2_IsWearable(wearable)
 		}
 	}
 	return SDKCall(isWearable, wearable);
+}
+
+stock bool:IsLivingPlayer(clientIdx)
+{
+	if (clientIdx <= 0 || clientIdx > MaxClients)
+		return false;
+		
+	return IsClientInGame(clientIdx) && IsPlayerAlive(clientIdx);
+}
+
+stock Float:fmin(Float:n1, Float:n2)
+{
+	return n1 < n2 ? n1 : n2;
 }
 
 #include <freak_fortress_2_vsh_feedback>
